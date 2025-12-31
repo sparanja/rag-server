@@ -2,6 +2,8 @@
 
 A Retrieval-Augmented Generation (RAG) server built with Python, LangChain, OpenAI API, and ChromaDB vector database.
 
+image.png
+
 ## Features
 
 - Load documents (TXT, PDF) into a vector database
@@ -200,3 +202,5 @@ You can modify the following in `rag_server.py`:
 - Make sure you have sufficient OpenAI API credits
 - For production use, consider adding authentication, rate limiting, and error handling improvements
 
+## Activate Python virtual environment:
+source envRag/bin/activate

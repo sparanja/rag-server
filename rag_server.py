@@ -146,26 +146,9 @@ async def query_endpoint(request: QueryRequest):
         
         # Create retrieval chain
         retriever = vector_store.as_retriever(search_kwargs={"k": request.k})
-
-        if multi_query_enabled:
-            multi_query = MultiQuery()
-            retrieval_chain = multi_query.generate_multi_queries() | retriever.map() | multi_query.get_unique_union
-            docs = retrieval_chain.invoke({"question":request.query})
-            print(len(docs))
-            return QueryResponse(
-                answer=answer,
-                source_documents=source_docs
-            )
-        
-        if rag_fusion_enabled:
-            multi_query = RagFusion()
-            retrieval_chain = multi_query.generate_rag_fusion_queries() | retriever.map() | multi_query.reciprocal_rank_fusion
-            docs = retrieval_chain.invoke({"question":request.query})
-            print(len(docs))
-            return QueryResponse(
-                answer=answer,
-                source_documents=source_docs
-            )
+        # Create the chain using LCEL
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
         
         # Create prompt template
         prompt_template = """Use the following pieces of context to answer the question at the end.
@@ -175,25 +158,31 @@ async def query_endpoint(request: QueryRequest):
 
         Question: {question}
         Answer:"""
-        
         prompt = ChatPromptTemplate.from_template(prompt_template)
+
+        # Modify the retriever to use multi query or rag fusion
+        if multi_query_enabled:
+            multi_query = MultiQuery()
+            retriever = multi_query.generate_multi_queries() | retriever.map() | multi_query.get_unique_union
         
-        # Create the chain using LCEL
-        def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
         
-        chain = (
+        if rag_fusion_enabled:
+            multi_query = RagFusion()
+            retriever = multi_query.generate_rag_fusion_queries() | retriever.map() | multi_query.reciprocal_rank_fusion
+        
+
+        retrieval_chain = (
             {"context": retriever | format_docs, "question": RunnablePassthrough()}
             | prompt
             | llm
             | StrOutputParser()
         )
-        
         # Execute query
-        answer = chain.invoke(request.query)
-        
+        answer = retrieval_chain.invoke(request.query)
+        print("Answer: ", answer)
         # Get source documents
         retrieved_docs = retriever.invoke(request.query)
+        print("Documents: ", retrieved_docs)
         source_docs = [doc.page_content for doc in retrieved_docs]
         
         return QueryResponse(
