@@ -131,6 +131,18 @@ async def load_document_endpoint(request: LoadDocumentRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+def resolveContext(retriever):
+    if rag_fusion_enabled:
+        return retriever
+    return retriever | format_docs
+
+def getSourceDocuments(retrieved_docs):
+    return [doc.page_content for doc, _ in retrieved_docs]
+
+
 @app.post("/query", response_model=QueryResponse)
 async def query_endpoint(request: QueryRequest):
     """Query the VectorDB and get an answer"""
@@ -145,10 +157,9 @@ async def query_endpoint(request: QueryRequest):
             )
         
         # Create retrieval chain
+        # This comes under indexing.
         retriever = vector_store.as_retriever(search_kwargs={"k": request.k})
         # Create the chain using LCEL
-        def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
         
         # Create prompt template
         prompt_template = """Use the following pieces of context to answer the question at the end.
@@ -170,9 +181,10 @@ async def query_endpoint(request: QueryRequest):
             multi_query = RagFusion()
             retriever = multi_query.generate_rag_fusion_queries() | retriever.map() | multi_query.reciprocal_rank_fusion
         
-
+        retrieverCpy = retriever
+        retriever = resolveContext(retriever)
         retrieval_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            {"context": retriever, "question": RunnablePassthrough()}
             | prompt
             | llm
             | StrOutputParser()
@@ -180,10 +192,11 @@ async def query_endpoint(request: QueryRequest):
         # Execute query
         answer = retrieval_chain.invoke(request.query)
         print("Answer: ", answer)
+
         # Get source documents
-        retrieved_docs = retriever.invoke(request.query)
-        print("Documents: ", retrieved_docs)
-        source_docs = [doc.page_content for doc in retrieved_docs]
+        retrieved_docs = retrieverCpy.invoke(request.query)
+        source_docs = getSourceDocuments(retrieved_docs)
+        print("Document: ", source_docs)
         
         return QueryResponse(
             answer=answer,

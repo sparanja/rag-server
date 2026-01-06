@@ -12,10 +12,10 @@ class RagFusion(BaseMultiQuery):
         
         return self.generate_multiple_queries(template)
     
-    def reciprocal_rank_fusion(results: list[list], k=60):
+    def reciprocal_rank_fusion(self, results: list[list]):
         """ Reciprocal_rank_fusion that takes multiple lists of ranked documents 
         and an optional parameter k used in the RRF formula """
-    
+        k=60
         # Initialize a dictionary to hold fused scores for each unique document
         fused_scores = {}
 
